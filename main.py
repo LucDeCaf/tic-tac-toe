@@ -1,7 +1,6 @@
-# TODO: Add winstreak functionality by implementing restart/retry option
 from random import choice as random_choice
 
-ALLOWED_NUMBERS: tuple = ('1', '2', '3')
+ALLOWED_NUMBERS: tuple = 1, 2, 3
 WINNING_POSITIONS: tuple = (
     # Horizontal wins
     ((0, 0), (0, 1), (0, 2)),
@@ -16,22 +15,30 @@ WINNING_POSITIONS: tuple = (
     ((2, 0), (1, 1), (0, 2))
 )
 
-OUTER_POSITIONS: tuple = ((0, 1), (1, 0), (1, 2), (2, 1), (0, 0), (0, 2), (2, 0), (2, 2))
+OUTER_POSITIONS: tuple = (0, 1), (1, 0), (1, 2), (2, 1), (0, 0), (0, 2), (2, 0), (2, 2)
 
 
 class Controller:
-    def __init__(self):
+    def __init__(self, p1_winstreak: int = 0, p2_winstreak: int = 0):
         # Create board
         self.board: list = [['-' for _ in range(3)] for _ in range(3)]
         self.open_spaces: list = []
         self.update_open_spaces()
 
+        # Per-round data
         self.winner: int = 0
         self.player_one_moves: list = []
         self.player_two_moves: list = []
         self.player_one_char: str = ''
         self.player_two_char: str = ''
-        self.player_one_winstreak, self.player_two_winstreak = 0, 0
+
+        # Assign winstreaks based on input values
+        self.player_one_winstreak: int = p1_winstreak
+        self.player_two_winstreak: int = p2_winstreak
+
+        # Handle game flow
+        self.game_running: bool = True
+        self.is_two_player: str = ''
 
     def check_for_win(self) -> int:
         """If current board configuration contains a won/lost/drawn position, print board and result and return True."""
@@ -60,42 +67,60 @@ class Controller:
                 self.winner = 2
                 print(">>> Player Two wins! <<<")
                 return True
+        # Return False if there is no Win, Loss, or Draw in the current position
         return False
 
-    def change_state(self, pos: tuple | list, state: int, turn: int) -> bool:
+    def change_state(self, pos: tuple | list, turn: int) -> bool:
         """Changes a position at a given tile if the tile is blank, i.e. has a value of '-'. Returns boolean based on
         whether the tile was empty or not."""
         # Check if chosen tile is empty
         if not self.board[pos[0]][pos[1]] == '-':
             return False
 
-        # Change tile
-        match state:
-            case 1:
-                self.board[pos[0]][pos[1]] = self.player_one_char
-            case 2:
-                self.board[pos[0]][pos[1]] = self.player_two_char
-
+        # Change the tile to the given player's tile character and append to the given player's list of played moves
         match turn:
             case 1:
+                self.board[pos[0]][pos[1]] = self.player_one_char
                 self.player_one_moves.append(tuple(pos))
             case 2:
+                self.board[pos[0]][pos[1]] = self.player_two_char
                 self.player_two_moves.append(tuple(pos))
+
+        # Update the list of open spaces to exclude the played move
         controller.update_open_spaces()
         return True
 
     def player_turn(self, player: int) -> bool:
         """Changes a tile on the board to player_one_char at position that player specifies. Returns boolean based on if
         the change was successful, i.e. valid coordinates were given. """
-        player_moves: str = input('Enter a row and a column (Separation is optional): ')
+        # Get player's move
+        player_moves: str = input('Enter a row and a column (Separation with a space is optional): ')
 
+        # Get player moves in tuple form
         unfiltered_coords: tuple = tuple([move for move in player_moves])
-        filtered_coords: tuple = tuple([int(item) - 1 for item in unfiltered_coords if item in ALLOWED_NUMBERS])
 
-        tile_empty: bool = self.change_state(pos=(filtered_coords[0], filtered_coords[1]), state=player, turn=player)
+        # Check if non-number characters are given
+        try:
+            semifiltered_coords: tuple = tuple([int(item) - 1 for item in unfiltered_coords])
+        except ValueError:
+            print('\n>>>> Please only enter the numbers 1, 2, or 3 <<<<')
+            return False
 
-        # Check if coordinates are the right length and not on an already chosen tile
-        if not len(filtered_coords) == 2 or not tile_empty:
+        # Check if correct number of numbers are given
+        if not len(semifiltered_coords) == 2:
+            print('\n>>>> Please only enter 2 numbers. <<<<')
+            return False
+
+        # Filter out disallowed numbers
+        filtered_coords: tuple = tuple([item for item in semifiltered_coords if item + 1 in ALLOWED_NUMBERS])
+        print(filtered_coords)
+
+        # Check if numbers above 3 were entered
+        if not len(filtered_coords) == 2:
+            print('\n>>>> Please only enter the numbers 1, 2, or 3 <<<<')
+            return False
+
+        if not self.change_state(pos=(filtered_coords[0], filtered_coords[1]), turn=player):
             print("\n>>>> Please enter a valid set of coordinates. <<<<")
             return False
 
@@ -103,6 +128,8 @@ class Controller:
 
     def find_winning_move(self, moves: tuple | list) -> list:
         """Returns any move that wins in 1 turn for a given list of moves that have already been made."""
+        # Loop through all winning configurations and check if two of the moves are already played by one person.
+        # Also, check if the final missing space is open or blocked. If it is open, return the final missing space.
         for config in WINNING_POSITIONS:
             if config[0] in moves and config[1] in moves and config[2] in self.open_spaces:
                 return config[2]
@@ -117,17 +144,17 @@ class Controller:
         # If computer can win in 1 move, play move in winning tile
         computer_move: list = self.find_winning_move(self.player_two_moves)
         if computer_move:
-            self.change_state(pos=computer_move, state=2, turn=2)
+            self.change_state(pos=computer_move, turn=2)
             return
 
         # If player is 1 move from winning, make move in winning tile
         if self.player_one_moves:
             computer_move = self.find_winning_move(self.player_one_moves)
             if computer_move:
-                self.change_state(pos=computer_move, state=2, turn=2)
+                self.change_state(pos=computer_move, turn=2)
                 return
 
-        # If player not 1 move away from winning, take the center or play random move
+        # If no-one is one move from winning, take the center if possible; otherwise play a random move
         if not computer_move:
             if (1, 1) in self.open_spaces:
                 computer_move = [1, 1]
@@ -135,17 +162,20 @@ class Controller:
                 move_bank = [pos for pos in OUTER_POSITIONS if pos in self.open_spaces]
                 computer_move = random_choice(move_bank)
 
-        self.change_state(pos=computer_move, state=2, turn=2)
+        # Change the value of the selected space
+        self.change_state(pos=computer_move, turn=2)
 
     def update_open_spaces(self) -> None:
         """Updates open_spaces variable."""
         new_open_spaces: list = []
 
+        # Loop through all spaces and append to new_open_spaces if the space is open
         for row_num, row in enumerate(self.board):
             for col_num, value in enumerate(row):
                 if value == '-':
                     new_open_spaces.append((row_num, col_num))
 
+        # Assign open_spaces to new_open_spaces
         self.open_spaces = new_open_spaces
 
     def display_board(self) -> None:
@@ -156,41 +186,71 @@ class Controller:
                 display_str += f'{item} '
             print(display_str)
 
+    def reset_board(self, p1_winstreak: int, p2_winstreak: int):
+        """Resets the board and resets open spaces"""
+        # Reinitialize the board, but parse through the given winstreaks
+        self.__init__(p1_winstreak, p2_winstreak)
 
-controller: Controller = Controller()
-game_running: bool = True
-is_two_player: str = input('Do you want to play a two-player game? Enter "y/n": ')
+    def play_round(self) -> bool:
+        """Plays a round of Tic Tac Toe. """
+        # Decides whether to play PvP or PvC
+        self.is_two_player = input('Do you want to play a two-player game? Enter "y/n": ')
 
-while not is_two_player == 'y' and not is_two_player == 'n':
-    is_two_player = input('Please enter "y/n": ')
+        while not self.is_two_player == 'y' and not self.is_two_player == 'n':
+            self.is_two_player = input('Please enter "y/n": ')
 
-# controller.player_one_char = input("What should player one's tiles look like?: ")
-# controller.player_two_char = input("What should the player two's tiles look like?: ")
-controller.player_one_char = "X"
-controller.player_two_char = "O"
+        # Define player characters (Possibly allow players to pick their characters in the future?)
+        self.player_one_char = "X"
+        self.player_two_char = "O"
 
-while game_running:
-    controller.display_board()
+        while self.game_running:
+            self.display_board()
 
-    # Check if player one wins or draws
-    if not controller.player_turn(1):
-        continue
+            # Check if player one wins or draws
+            if not self.player_turn(1):
+                continue
 
-    if controller.check_for_win():
-        break
+            if self.check_for_win():
+                break
 
-    # Check if player two / computer wins or draws
-    if is_two_player == 'y':
-        controller.display_board()
-        controller.player_turn(2)
-    else:
-        controller.computer_turn()
+            # Check if player two / computer wins or draws
+            if self.is_two_player == 'y':
+                self.display_board()
+                self.player_turn(2)
+            else:
+                self.computer_turn()
 
-    if controller.check_for_win():
-        break
+            if self.check_for_win():
+                break
 
-match controller.winner:
-    case 1:
-        print(f"Winning streak: {controller.player_one_winstreak}")
-    case 2:
-        print(f"Winning streak: {controller.player_two_winstreak}")
+        # Display the relevant winning streak of the winning player. If there is no winning player, display nothing
+        match self.winner:
+            case 1:
+                print(f"Winning streak: {self.player_one_winstreak}")
+            case 2:
+                print(f"Winning streak: {self.player_two_winstreak}")
+
+        # Check if player wants to play another round and return the answer as True or False
+        new_round: str = input("\nPlay again? Enter 'y/n', or enter 'r' to reset the scores and play a new round: ")
+        while not new_round == 'y' and not new_round == 'n' and not new_round == 'r':
+            new_round = input("Please only enter 'y/n/r': ")
+
+        # If 'y', reset the board and return True. If 'n', reset the board and return False. If 'r', reinitialize the
+        # winstreaks, reset the board, and return True.
+        match new_round:
+            case 'y':
+                self.reset_board(self.player_one_winstreak, self.player_two_winstreak)
+                return True
+            case 'r':
+                self.reset_board(0, 0)
+                return True
+            case 'n':
+                return False
+
+
+if __name__ == "__main__":
+    controller: Controller = Controller()
+    play_again: bool = controller.play_round()
+
+    while play_again:
+        play_again = controller.play_round()
